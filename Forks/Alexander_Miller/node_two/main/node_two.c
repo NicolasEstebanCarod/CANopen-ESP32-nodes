@@ -52,11 +52,11 @@ void mainTask(void *pvParameter)
 				ESP_ERROR_CHECK(esp_timer_start_periodic(periodicTimer, CO_MAIN_TASK_INTERVAL));
 
 				/* start CAN */
-				CO_CANsetNormalMode(CO->CANmodule[0]);
+				CO_CANsetNormalMode(CO->CANmodule);
 
 				reset = CO_RESET_NOT;
 				coInterruptCounterPrevious = coInterruptCounter;
-
+				
 				/*Set Operating Mode of Slaves to Operational*/
 				// CO_sendNMTcommand(CO, 0x01, NODE_ID_MASTER);
 				//CO_sendNMTcommand(CO, 0x01, NODE_ID_MOTOR1);
@@ -69,7 +69,24 @@ void mainTask(void *pvParameter)
 
 				/* application init code goes here. */
 				//rosserialSetup();
+				CO_CANtx_t *buffer = CO_CANtxBufferInit(
+														CO->CANmodule[0], /* pointer to CAN module used for sending this message */
+														0,     /* index of specific buffer inside CAN module */
+														0x0000,           /* CAN identifier */
+														0,                /* rtr */
+														2,                /* number of data bytes */
+														0);    
+				buffer->data[0]=5;
+				buffer->ident=0x42;
+				CO_CANsend(CO->CANmodule[0],buffer);
+				twai_message_t *message;
 
+				uint16_t index = CO_OD_find(CO->SDO[0], 0x1600);
+				uint16_t length = CO_OD_getLength(CO->SDO[0], index, 2);
+				uint8_t* p = CO_OD_getDataPointer(CO->SDO[0], index, 2);
+				*p = 2;
+				printf("VALOR OD: %d \n", *p);
+	
 				while (reset == CO_RESET_NOT)
 				{
 						/* loop for normal program execution ******************************************/
@@ -81,37 +98,7 @@ void mainTask(void *pvParameter)
 
 						/* CANopen process */
 						reset = CO_process(CO, coInterruptCounterDiff, NULL);
-
-						/* Nonblocking application code may go here. */
-						if (counter == 0)
-						{
-								// dunker_setEnable(1);
-								// dunker_setSpeed(1000);
-								counter++;
-						}
-						if (coInterruptCounter > 4000 && counter == 1)
-						{
-								// dunker_setSpeed(3000);
-								counter++;
-						}
-						if (coInterruptCounter > 8000 && counter == 2)
-						{
-								// dunker_quickStop();
-								counter++;
-						}
-						if (coInterruptCounter > 12000 && counter == 3)
-						{
-								// dunker_continueMovement();
-								// dunker_setSpeed(1000);
-								counter++;
-						}
-						if (coInterruptCounter > 16000 && counter == 4)
-						{
-								// dunker_halt();
-								// dunker_setEnable(0);
-								counter++;
-						}
-
+					
 						/* Wait */
 						vTaskDelay(MAIN_WAIT / portTICK_PERIOD_MS);
 				}

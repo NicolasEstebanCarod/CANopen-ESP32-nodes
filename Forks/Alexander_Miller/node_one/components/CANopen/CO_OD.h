@@ -79,7 +79,7 @@
   #define CO_NO_SDO_SERVER               1   //Associated objects: 1200-127F
   #define CO_NO_SDO_CLIENT               1   //Associated objects: 1280-12FF
   #define CO_NO_LSS_SERVER               0   //LSS Slave
-  #define CO_NO_LSS_CLIENT               0   //LSS Master
+  #define CO_NO_LSS_CLIENT               1   //LSS Master
   #define CO_NO_RPDO                     5   //Associated objects: 14xx, 16xx
   #define CO_NO_TPDO                     4   //Associated objects: 18xx, 1Axx
   #define CO_NO_NMT_MASTER               1

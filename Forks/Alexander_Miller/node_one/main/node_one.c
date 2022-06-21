@@ -52,7 +52,6 @@ void mainTask(void *pvParameter)
 				/* Configure Timer interrupt function for execution every CO_MAIN_TASK_INTERVAL */
 				ESP_ERROR_CHECK(esp_timer_create(&coMainTaskArgs, &periodicTimer));
 				ESP_ERROR_CHECK(esp_timer_start_periodic(periodicTimer, CO_MAIN_TASK_INTERVAL));
-
 				/* start CAN */
 				CO_CANsetNormalMode(CO->CANmodule[0]);
 
@@ -60,18 +59,77 @@ void mainTask(void *pvParameter)
 				coInterruptCounterPrevious = coInterruptCounter;
 
 				/*Set Operating Mode of Slaves to Operational*/
-				CO_sendNMTcommand(CO, 0x01, NODE_ID_MOTOR0);
-				//CO_sendNMTcommand(CO, 0x01, NODE_ID_MOTOR1);
-				//CO_sendNMTcommand(CO, 0x01, NODE_ID_GYRO);
-				//CO_sendNMTcommand(CO, 0x01, NODE_ID_HATOX);
-
+				CO_sendNMTcommand(CO, 0x01, 16);
+				
+				CO_CANtx_t *buffer = CO_CANtxBufferInit(
+														CO->CANmodule[0], /* pointer to CAN module used for sending this message */
+														0,     /* index of specific buffer inside CAN module */
+														0x0000,           /* CAN identifier */
+														0,                /* rtr */
+														2,                /* number of data bytes */
+														0);    
 				/* Initialise system components */
-				dunker_init(CO, NODE_ID_MOTOR0, 2);
 				// gyro_init(CO);
-
 				/* application init code goes here. */
 				//rosserialSetup();
+				
+				//Mensaje CAN simple
+				buffer->data[0]=5;
+				buffer->ident=0x1A;
+				CO_CANsend(CO->CANmodule[1],buffer);
 
+				//Comunicación cliente SDO 
+				
+				uint32_t response = 0;
+				uint32_t data = 0;
+				uint8_t *datos;
+				ESP_LOGI("mainTask", "SDO download");
+				CO_SDOclientDownloadInitiate(CO->SDOclient[0], 0x1600, 0x1, &datos,sizeof(buffer),5);
+				CO_SDOclientDownload(CO->SDOclient[0],100,1000, &response);
+				CO_SDOclientClose(CO->SDOclient[0]);
+				ESP_LOGI("mainTask", "SDO download end");
+				
+				//uint16_t index = CO_OD_find(CO->SDO[0], 0x1600);
+				//uint16_t length = CO_OD_getLength(CO->SDO[0], index, 2);
+				//uint8_t* p = CO_OD_getDataPointer(CO->SDO[0], index, 2);
+				// *p = 123456;
+				//printf("VALOR OD: %d \n", *p);
+
+				ESP_LOGI("mainTask", "SDO upload");
+				CO_SDOclientUploadInitiate(CO->SDOclient[0], 0x1600, 0x1, &buffer,sizeof(buffer),5);
+				CO_SDOclientUpload(CO->SDOclient[0],100,1000, &data,&response);
+				CO_SDOclientClose(CO->SDOclient[0]);
+				ESP_LOGI("mainTask", "SDO upload end");
+
+
+
+				//Comunicación PDO
+				/*
+				uint8_t *mapPointer[8];
+				ESP_LOGI("mainTask", "PDO ");
+				CO->TPDO[0]->sendRequest = 1;
+				*CO->TPDO[0]->mapPointer = 0x1600;
+				CO->TPDO[0]->valid = true; // set to true to send PDO
+				CO->TPDO[0]->sendIfCOSFlags = 1;
+				vTaskDelay(1000/portTICK_PERIOD_MS);
+				ESP_LOGI("mainTask", "PDO end ");
+				*/
+
+
+				//Lectura objeto diccionario
+				ESP_LOGI("mainTask","Leyendo objeto diccionario");
+				ESP_LOGI("mainTask","Respuesta inicio %d ",CO_SDO_initTransfer(CO->SDO[0],0x1005,0));
+				ESP_LOGI("mainTask","Respuesta lectura %d ",CO_SDO_readOD(CO->SDO[0], sizeof(CO->SDO[0]->ODF_arg.data)));
+				ESP_LOGI("mainTask","OD: %d ", CO->SDO[0]->ODF_arg.data[0]);
+
+				//Escritura objeto diccionario
+				ESP_LOGI("mainTask","Escribiendo objeto diccionario");
+				ESP_LOGI("mainTask","Respuesta inicio %d ",CO_SDO_initTransfer(CO->SDO[0],0x6205,0x0));
+				CO->SDO[0]->ODF_arg.data[0] = 1;
+				ESP_LOGI("mainTask","Respuesta escritura %d ",CO_SDO_writeOD(CO->SDO[0], sizeof(CO->SDO[0]->ODF_arg.data)));
+				ESP_LOGI("mainTask","OD: %d ", CO->SDO[0]->ODF_arg.data[0]);
+
+				
 				while (reset == CO_RESET_NOT)
 				{
 						/* loop for normal program execution ******************************************/
@@ -83,36 +141,7 @@ void mainTask(void *pvParameter)
 
 						/* CANopen process */
 						reset = CO_process(CO, coInterruptCounterDiff, NULL);
-
-						/* Nonblocking application code may go here. */
-						if (counter == 0)
-						{
-								dunker_setEnable(1);
-								dunker_setSpeed(1000);
-								counter++;
-						}
-						if (coInterruptCounter > 4000 && counter == 1)
-						{
-								dunker_setSpeed(3000);
-								counter++;
-						}
-						if (coInterruptCounter > 8000 && counter == 2)
-						{
-								dunker_quickStop();
-								counter++;
-						}
-						if (coInterruptCounter > 12000 && counter == 3)
-						{
-								dunker_continueMovement();
-								dunker_setSpeed(1000);
-								counter++;
-						}
-						if (coInterruptCounter > 16000 && counter == 4)
-						{
-								dunker_halt();
-								dunker_setEnable(0);
-								counter++;
-						}
+						
 
 						/* Wait */
 						vTaskDelay(MAIN_WAIT / portTICK_PERIOD_MS);
@@ -128,14 +157,12 @@ void mainTask(void *pvParameter)
 static void coMainTask(void *arg)
 {
 		coInterruptCounter++;
-
 		if (CO->CANmodule[0]->CANnormal)
 		{
 				bool_t syncWas;
 
 				/* Process Sync */
 				syncWas = CO_process_SYNC(CO, CO_MAIN_TASK_INTERVAL);
-
 				/* Read inputs */
 				CO_process_RPDO(CO, syncWas);
 

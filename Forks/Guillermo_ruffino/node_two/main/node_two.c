@@ -49,20 +49,6 @@ void mainTask(void *pvParameter)
 		uint16_t pendingBitRate = 125; /* read from dip switches or nonvolatile
 	                                      memory, configurable by LSS slave */
 
-		// Configure potentiometer reader
-		adc1_config_width(ADC_WIDTH_BIT_12);
-		adc1_config_channel_atten(ADC1_CHANNEL_0, ADC_ATTEN_DB_11);
-
-		// Configure push buttons
-		const gpio_config_t io_conf = {.intr_type = GPIO_PIN_INTR_DISABLE,
-				                       .mode = GPIO_MODE_INPUT,
-				                       .pin_bit_mask = (1ULL << GPIO_NUM_25) |
-				                                       (1ULL << GPIO_NUM_32) |
-				                                       (1ULL << GPIO_NUM_33),
-				                       .pull_up_en = 1};
-
-		gpio_config(&io_conf);
-
 		/* Allocate memory */
 		err = CO_new(&heapMemoryUsed);
 		if (err != CO_ERROR_NO) {
@@ -131,6 +117,20 @@ void mainTask(void *pvParameter)
 				reset = CO_RESET_NOT;
 				coInterruptCounterPrevious = coInterruptCounter;
 
+				//Lectura objeto diccionario
+				printf("Leyendo objeto diccionario\n");
+				printf("Respuesta inicio %d \n",CO_SDO_initTransfer(CO->SDO[0],0x1005,0));
+				printf("Respuesta lectura %d \n",CO_SDO_readOD(CO->SDO[0], sizeof(CO->SDO[0]->ODF_arg.data)));
+				printf("OD: %d \n", CO->SDO[0]->ODF_arg.data[0]);
+
+				//Escritura objeto diccionario
+
+				printf("Escribiendo objeto diccionario\n");
+				printf("Respuesta inicio %d \n",CO_SDO_initTransfer(CO->SDO[0],0x1600,0x01));
+				CO->SDO[0]->ODF_arg.data[0] = 1;
+				printf("Respuesta lectura %d \n",CO_SDO_writeOD(CO->SDO[0], sizeof(CO->SDO[0]->ODF_arg.data)));
+				printf("OD: %d \n", CO->SDO[0]->ODF_arg.data[0]);	
+				
 				while (reset == CO_RESET_NOT)
 				{
 						/* loop for normal program execution
@@ -143,34 +143,11 @@ void mainTask(void *pvParameter)
 
 						/* CANopen process */
 						reset = CO_process(CO, (uint32_t)timer1msDiff * 1000, NULL);
-						LED_red = CO_LED_RED(CO->LEDs, CO_LED_CANopen);
-						LED_green = CO_LED_GREEN(CO->LEDs, CO_LED_CANopen);
-
-						/* Nonblocking application code may go here. */
-						OD_readInput8Bit[0]++;
-
-						OD_readInput8Bit[1] = 0;
-						if (gpio_get_level(GPIO_NUM_25))
-								OD_readInput8Bit[1] |= 1;
-						if (gpio_get_level(GPIO_NUM_32))
-								OD_readInput8Bit[1] |= 2;
-						if (gpio_get_level(GPIO_NUM_33))
-								OD_readInput8Bit[1] |= 4;
-
-						uint32_t val = adc1_get_raw(ADC1_CHANNEL_0); // GPIO36
-						OD_readInput8Bit[4] = val & 0x000000ff;
-						OD_readInput8Bit[5] = (val & 0x0000ff00) >> 8;
-						OD_readInput8Bit[6] = (val & 0x00ff0000) >> 16;
-						OD_readInput8Bit[7] = (val & 0xff000000) >> 24;
-
-						if (timer1msCopy % 1000 == 0) {
-								ESP_LOGI("ADC", "val: %d", val);
-						}
 
 						/* Process EEPROM */
 
 						/* optional sleep for short time */
-						vTaskDelay(pdMS_TO_TICKS(5));
+						vTaskDelay(pdMS_TO_TICKS(20));
 				}
 		}
 		/* program exit
